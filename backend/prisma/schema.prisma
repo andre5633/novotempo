@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("operacional") // "admin" | "operacional" | "readonly"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cliente {
+  id        String   @id @default(cuid())
+  nome      String
+  cpfCnpj   String   @unique
+  tipo      String   // "produtor" | "comprador" | "ambos"
+  telefone  String?
+  email     String?
+  cidade    String?
+  estado    String?
+  inscricaoEstadual String?
+  fazenda   String?
+  endereco  String?
+  banco     String?
+  agencia   String?
+  conta     String?
+  pix       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contratosComoProdutor  Contrato[] @relation("Produtor")
+  contratosComoComprador Contrato[] @relation("Comprador")
+}
+
+model Contrato {
+  id                String   @id @default(cuid())
+  numeroId          String   @unique
+  status            String   @default("nao_iniciado")
+  dataFechamento    DateTime?
+  inicio            DateTime?
+  termino           DateTime?
+  produto           String
+  compradorId       String
+  produtorId        String
+  cidade            String?
+  numSacas          Float    @default(0)
+  valorSaca         Float    @default(0)
+  comissaoPorSaca   Float    @default(0)
+  comissaoTerceiro  Float    @default(0)
+  fechamentoOrigem  String?
+  fechamentoDestino String?
+  refPeso           Float    @default(0)
+  comissaoPagaPor   String   @default("comprador") // "vendedor" | "comprador" | "ambos"
+  comissaoVendedor  Float    @default(0)
+  comissaoComprador Float    @default(0)
+  fretePorConta     String?
+  localRetirada     String?
+  condicoesPagamento String?
+  funrural          Float    @default(0)
+  foro              String?
+  observacoes       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  comprador    Cliente      @relation("Comprador", fields: [compradorId], references: [id])
+  produtor     Cliente      @relation("Produtor", fields: [produtorId], references: [id])
+  carregamentos Carregamento[]
+  transacoes   Transacao[]
+}
+
+model Carregamento {
+  id           String    @id @default(cuid())
+  numeroId     String    @unique
+  contratoId   String
+  corretor     String?
+  dataEnvio    DateTime?
+  motorista    String?
+  pesoKg       Float     @default(0)
+  produto      String?
+  qntSacas     Float     @default(0)
+  valorCarga   Float     @default(0)
+  refPeso      Float     @default(0)
+  refValorSaca Float     @default(0)
+  umidadeSorgo Float?
+  observacoes  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+}
+
+model Transacao {
+  id              String    @id @default(cuid())
+  numeroId        String    @unique
+  contratoId      String
+  categoria       String?
+  dataTransacao   DateTime?
+  metodoPagamento String?
+  nfs             String?
+  status          String    @default("pendente")
+  tipoDaNota      String?
+  valorDebitado   Float     @default(0)
+  refProdutor     Float     @default(0)
+  refComissao     Float     @default(0)
+  observacoes     String?
+  comprovante     String?   // file path or URL
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+}

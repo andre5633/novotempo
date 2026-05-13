@@ -1,0 +1,89 @@
+services:
+
+  # ── Banco de dados ───────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: boaterra-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-boaterra}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-boaterra_pass}
+      POSTGRES_DB: ${DB_NAME:-boaterra}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - boaterra-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-boaterra}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (Express + Prisma) ───────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+    container_name: boaterra-backend
+    restart: always
+    environment:
+      PORT: 3002
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${DB_USER:-boaterra}:${DB_PASSWORD:-boaterra_pass}@db:5432/${DB_NAME:-boaterra}?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-TROQUE_ESTA_CHAVE_POR_UMA_SEGURA_32_CHARS}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - uploads_data:/app/uploads
+    networks:
+      - boaterra-net
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    container_name: boaterra-frontend
+    restart: always
+    environment:
+      PORT: 3001
+      NODE_ENV: development
+      # URL relativa — funciona com qualquer domínio/IP através do nginx
+      NEXT_PUBLIC_API_URL: /api
+      # Comunicação interna Docker: frontend → backend direto na rede
+      BACKEND_INTERNAL_URL: http://backend:3002
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-TROQUE_ESTA_CHAVE_POR_UMA_SEGURA_32_CHARS}
+      # Será sobrescrito pelo .env com a URL pública real
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - boaterra-net
+
+  # ── Nginx (reverse proxy — único ponto de entrada) ───────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: boaterra-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - boaterra-net
+
+networks:
+  boaterra-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  uploads_data:

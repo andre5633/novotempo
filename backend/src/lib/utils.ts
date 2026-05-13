@@ -1,0 +1,76 @@
+export function generateNumeroId(prefix: string): string {
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(2);
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const random = Math.floor(Math.random() * 9000 + 1000);
+  return `${prefix}${year}${month}${random}`;
+}
+
+export function calcContrato(contrato: {
+  numSacas: number;
+  valorSaca: number;
+  comissaoPorSaca: number;
+  comissaoVendedor?: number;
+  comissaoComprador?: number;
+  comissaoTerceiro: number;
+  carregamentos: { qntSacas: number; valorCarga: number; refPeso: number }[];
+  transacoes: { valorDebitado: number; refComissao: number; refProdutor: number }[];
+}) {
+  const valorContrato = contrato.numSacas * contrato.valorSaca;
+  
+  // Use dual commissions if present, otherwise fallback to comissaoPorSaca
+  const comissaoTotalPorSaca = (contrato.comissaoVendedor || 0) + (contrato.comissaoComprador || 0) || contrato.comissaoPorSaca;
+  const comissaoProjetada = contrato.numSacas * comissaoTotalPorSaca;
+
+  const sacasRetiradas = contrato.carregamentos.reduce(
+    (s, c) => s + c.qntSacas,
+    0
+  );
+  const sacasARetirar = contrato.numSacas - sacasRetiradas;
+  const valorCarregado = contrato.carregamentos.reduce(
+    (s, c) => s + c.valorCarga,
+    0
+  );
+  const refPesoCarregamento = contrato.carregamentos.reduce(
+    (s, c) => s + c.refPeso,
+    0
+  );
+  const saldoCarregamento = valorContrato - valorCarregado;
+
+  const totalRecebidoCarga = contrato.transacoes.reduce(
+    (s, t) => s + t.valorDebitado,
+    0
+  );
+  const comissaoRecebida = contrato.transacoes.reduce(
+    (s, t) => s + t.refComissao,
+    0
+  );
+  const refProdutor = contrato.transacoes.reduce(
+    (s, t) => s + t.refProdutor,
+    0
+  );
+
+  const percRecebida =
+    valorContrato > 0 ? (totalRecebidoCarga / valorContrato) * 100 : 0;
+  const aReceberCarga = valorContrato - totalRecebidoCarga;
+  const percComissao =
+    comissaoProjetada > 0 ? (comissaoRecebida / comissaoProjetada) * 100 : 0;
+  const comissaoAReceber = comissaoProjetada - comissaoRecebida;
+
+  return {
+    valorContrato,
+    comissaoProjetada,
+    sacasRetiradas,
+    sacasARetirar,
+    valorCarregado,
+    refPesoCarregamento,
+    saldoCarregamento,
+    totalRecebidoCarga,
+    comissaoRecebida,
+    refProdutor,
+    percRecebida,
+    aReceberCarga,
+    percComissao,
+    comissaoAReceber,
+  };
+}
