@@ -7,16 +7,23 @@ import { generateNumeroId } from "../lib/utils";
 
 const router = Router();
 
-// GET /api/carregamentos?contratoId=&page=&limit=
+// GET /api/carregamentos?contratoId=&dataInicio=&dataFim=&comprador=&produtor=&page=&limit=
 router.get("/", authMiddleware, async (req, res, next) => {
   try {
-    const { contratoId, page, limit } = req.query;
+    const { contratoId, dataInicio, dataFim, comprador, produtor, page, limit } = req.query;
     const pageNum = Math.max(1, parseInt(String(page || "1")));
     const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || "20"))));
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
     if (contratoId) where.contratoId = String(contratoId);
+    if (dataInicio || dataFim) {
+      where.dataEnvio = {};
+      if (dataInicio) where.dataEnvio.gte = new Date(String(dataInicio));
+      if (dataFim) where.dataEnvio.lte = new Date(String(dataFim) + "T23:59:59");
+    }
+    if (comprador) where.contrato = { ...where.contrato, comprador: { nome: { contains: String(comprador), mode: "insensitive" } } };
+    if (produtor) where.contrato = { ...where.contrato, produtor: { nome: { contains: String(produtor), mode: "insensitive" } } };
 
     const [data, total] = await Promise.all([
       prisma.carregamento.findMany({

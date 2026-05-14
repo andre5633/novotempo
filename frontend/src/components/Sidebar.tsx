@@ -51,6 +51,15 @@ const nav = [
       </svg>
     ),
   },
+  {
+    href: "/motoristas",
+    label: "Motoristas",
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {
@@ -84,8 +93,8 @@ export default function Sidebar() {
       {/* Divider */}
       <div className="mx-5 h-px bg-white/8 mb-3" />
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 space-y-0.5">
+      {/* Nav - flex-1 garante que o menu ocupe o espaço e empurre o footer para baixo */}
+      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
         <p className="px-3.5 py-2 text-2xs font-bold text-white/25 uppercase tracking-widest">
           Menu
         </p>
@@ -107,29 +116,31 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer / user */}
-      <div className="px-3 pb-5 mt-4">
-        <div className="mx-0.5 h-px bg-white/8 mb-4" />
-        <div className="flex items-center gap-3 px-3.5 mb-1">
-          <div className="w-8 h-8 rounded-full bg-brand-400 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-bold">{userInitial}</span>
+      {/* Footer / user - Fixado no rodapé */}
+      <div className="px-3 pb-6 pt-4 mt-auto">
+        <div className="mx-3 h-px bg-white/8 mb-6" />
+        <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-brand-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-brand-900/50">
+              <span className="text-white text-sm font-bold">{userInitial}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-[13px] font-bold truncate leading-none">{session?.user?.name}</p>
+              <p className="text-white/40 text-[11px] mt-1 font-medium">
+                {isAdmin ? "Administrador" : "Operacional"}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-[12px] font-semibold truncate leading-none">{session?.user?.name}</p>
-            <p className="text-white/35 text-[11px] mt-0.5 font-medium">
-              {isAdmin ? "Administrador" : "Somente Leitura"}
-            </p>
-          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white/5 hover:bg-red-500/10 text-white/60 hover:text-red-400 text-[11px] font-bold uppercase tracking-wider transition-all border border-white/5 hover:border-red-500/20"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Sair da conta
+          </button>
         </div>
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="sidebar-link sidebar-link-idle w-full mt-1 text-xs"
-        >
-          <svg className="w-4 h-4 text-white/35 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sair da conta
-        </button>
       </div>
     </div>
   );

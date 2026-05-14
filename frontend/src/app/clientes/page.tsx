@@ -1,10 +1,13 @@
 "use client";
 import DashboardLayout from "../dashboard-layout";
 import PageHeader from "@/components/PageHeader";
+import Pagination from "@/components/Pagination";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+
+const LIMIT = 20;
 
 interface Cliente {
   id: string;
@@ -31,20 +34,28 @@ export default function ClientesPage() {
   const [q, setQ] = useState("");
   const [tipo, setTipo] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
 
-  async function load() {
+  async function load(p = page) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (tipo) params.set("tipo", tipo);
-    const res = await apiFetch(`/clientes?${params}`);
-    const data = await res.json();
-    setClientes(data);
+    params.set("page", String(p));
+    params.set("limit", String(LIMIT));
+    try {
+      const res = await apiFetch(`/clientes?${params}`);
+      const data = await res.json();
+      setClientes(Array.isArray(data.data) ? data.data : []);
+      if (data.meta) setMeta({ total: data.meta.total, totalPages: data.meta.totalPages });
+    } catch {
+      setClientes([]);
+    }
     setLoading(false);
   }
 
-  useEffect(() => {
-    load();
-  }, [q, tipo]);
+  useEffect(() => { setPage(1); }, [q, tipo]);
+  useEffect(() => { load(page); }, [q, tipo, page]);
 
   async function handleDelete(id: string) {
     if (!confirm("Excluir este cliente?")) return;
@@ -58,7 +69,7 @@ export default function ClientesPage() {
     <DashboardLayout>
       <PageHeader
         title="Clientes"
-        subtitle="Produtores e Compradores"
+        subtitle={`${meta.total} clientes`}
         action={isAdmin ? { label: "Novo Cliente", href: "/clientes/novo" } : undefined}
       />
 
@@ -150,6 +161,7 @@ export default function ClientesPage() {
             </table>
           </div>
         )}
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} limit={LIMIT} onPageChange={setPage} />
       </div>
     </DashboardLayout>
   );

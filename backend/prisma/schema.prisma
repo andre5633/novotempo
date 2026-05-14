@@ -67,7 +67,9 @@ model Contrato {
   condicoesPagamento String?
   funrural          Float    @default(0)
   foro              String?
+  clausulas         String?
   observacoes       String?
+  padraoQualidade   Json?    // Array de { item, padrao, desconto }
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -75,6 +77,16 @@ model Contrato {
   produtor     Cliente      @relation("Produtor", fields: [produtorId], references: [id])
   carregamentos Carregamento[]
   transacoes   Transacao[]
+}
+
+model Motorista {
+  id        String   @id @default(cuid())
+  nome      String
+  cpfCnpj   String?
+  telefone  String?
+  placa     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Carregamento {
@@ -105,7 +117,8 @@ model Transacao {
   categoria       String?
   dataTransacao   DateTime?
   metodoPagamento String?
-  nfs             String?
+  nfs             String?   // NF de Peso de Balança
+  nfAcesso        String?   // NF de Acesso
   status          String    @default("pendente")
   tipoDaNota      String?
   valorDebitado   Float     @default(0)

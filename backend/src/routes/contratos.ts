@@ -73,7 +73,7 @@ router.post("/", authMiddleware, adminOnly, validate(contratoSchema), async (req
     const data = req.body;
     const numeroId = generateNumeroId("CTR");
 
-    const contrato = await prisma.contrato.create({
+    const contrato = await (prisma.contrato.create as any)({
       data: {
         numeroId,
         status: data.status,
@@ -97,6 +97,7 @@ router.post("/", authMiddleware, adminOnly, validate(contratoSchema), async (req
         fechamentoOrigem: data.fechamentoOrigem ?? null,
         fechamentoDestino: data.fechamentoDestino ?? null,
         observacoes: data.observacoes ?? null,
+        padraoQualidade: data.padraoQualidade ?? null,
         dataFechamento: data.dataFechamento ? new Date(data.dataFechamento) : null,
         inicio: data.inicio ? new Date(data.inicio) : null,
         termino: data.termino ? new Date(data.termino) : null,
@@ -215,15 +216,18 @@ router.get("/:id/pdf", authMiddleware, async (req, res, next) => {
     const calc = calcContrato(contrato);
 
     let comissaoTexto = "";
+    const vVend = contrato.comissaoVendedor || 0;
+    const vComp = contrato.comissaoComprador || 0;
+
     if (view === "unificado") {
-      const total = (contrato.comissaoVendedor || 0) + (contrato.comissaoComprador || 0);
-      comissaoTexto = `COMISSÃO TOTAL: ${fmt(total)} (Vend: ${fmt(contrato.comissaoVendedor || 0)} / Comp: ${fmt(contrato.comissaoComprador || 0)})`;
+      const totalPerSaca = vVend + vComp;
+      if (totalPerSaca > 0) comissaoTexto = `COMISSÃO: ${fmt(totalPerSaca)} / SC`;
     } else if (view === "vendedor") {
-      comissaoTexto = `COMISSÃO: ${fmt(contrato.comissaoVendedor || 0)} — POR CONTA DO VENDEDOR`;
+      if (vVend > 0) comissaoTexto = `COMISSÃO: ${fmt(vVend)} / SC — POR CONTA DO VENDEDOR`;
     } else if (view === "comprador") {
-      comissaoTexto = `COMISSÃO: ${fmt(contrato.comissaoComprador || 0)} — POR CONTA DO COMPRADOR`;
+      if (vComp > 0) comissaoTexto = `COMISSÃO: ${fmt(vComp)} / SC — POR CONTA DO COMPRADOR`;
     } else if (contrato.comissaoPorSaca > 0) {
-      comissaoTexto = `COMISSÃO: ${fmt(contrato.comissaoPorSaca)}/SACA · TOTAL: ${fmt(contrato.numSacas * contrato.comissaoPorSaca)} — POR CONTA DO ${(contrato.comissaoPagaPor || "COMPRADOR").toUpperCase()}`;
+      comissaoTexto = `COMISSÃO: ${fmt(contrato.comissaoPorSaca)} / SC — POR CONTA DO ${(contrato.comissaoPagaPor || "COMPRADOR").toUpperCase()}`;
     }
 
     // Build carregamentos rows for page 2
@@ -305,7 +309,8 @@ router.get("/:id/pdf", authMiddleware, async (req, res, next) => {
       background: #f0f5f0;
       border: 1pt solid #2d5a27;
       padding: 5pt 8pt;
-      margin-bottom: 12pt;
+      margin-top: 10pt;
+      margin-bottom: 25pt;
     }
 
     /* ── Section header ──────────────────────────────────────────────── */
@@ -501,12 +506,20 @@ router.get("/:id/pdf", authMiddleware, async (req, res, next) => {
       <tr><th>Item</th><th>Padrão</th><th>Desconto fora do padrão</th></tr>
     </thead>
     <tbody>
-      <tr><td>Umidade</td><td>Até 14,00 %</td><td>Isento até o padrão</td></tr>
-      <tr><td>Impurezas</td><td>1,0 % (peneira 3 mm)</td><td>Até o limite de 1 %</td></tr>
-      <tr><td>Avariados</td><td>5 %</td><td>1×1 conforme limites de tolerância</td></tr>
-      <tr><td>Carunchado</td><td>Até 1 %</td><td>1×1 até limite de 2 %</td></tr>
-      <tr><td>Insetos / Odor</td><td>Isento</td><td>Produto recusado</td></tr>
-      <tr><td>Quebrado</td><td>Até 8 %</td><td>1×1 conforme limite de cada peneira</td></tr>
+      ${(() => {
+        const defaultRows = [
+          { item: "Umidade", padrao: "Até 14,00 %", desconto: "Isento até o padrão" },
+          { item: "Impurezas", padrao: "1,0 % (peneira 3 mm)", desconto: "Até o limite de 1 %" },
+          { item: "Avariados", padrao: "5 %", desconto: "1×1 conforme limites de tolerância" },
+          { item: "Carunchado", padrao: "Até 1 %", desconto: "1×1 até limite de 2 %" },
+          { item: "Insetos / Odor", padrao: "Isento", desconto: "Produto recusado" },
+          { item: "Quebrado", padrao: "Até 8 %", desconto: "1×1 conforme limite de cada peneira" },
+        ];
+        const rows = (Array.isArray((contrato as any).padraoQualidade) && (contrato as any).padraoQualidade.length > 0)
+          ? (contrato as any).padraoQualidade
+          : defaultRows;
+        return rows.map((r: any) => `<tr><td>${r.item}</td><td>${r.padrao}</td><td>${r.desconto}</td></tr>`).join("");
+      })()}
     </tbody>
   </table>
 
@@ -531,42 +544,10 @@ router.get("/:id/pdf", authMiddleware, async (req, res, next) => {
     ${contrato.funrural ? `<div style="font-size:8.5pt;color:#555;margin-top:3pt;">FUNRURAL: ${fmtN(contrato.funrural, 2)}%</div>` : ""}
   </div>
 
-  <!-- Clauses -->
-  <div class="clauses">
-    <b>CLÁUSULAS:</b>
-    1. As partes declaram plena ciência e aceitação das condições estipuladas neste instrumento particular de compra e venda.
-    2. O produto objeto deste contrato está livre de quaisquer ônus, penhoras ou gravames (Lei 13.606/2018).
-    3. A Corretora Novo Tempo atua exclusivamente como intermediária, sem responsabilidade solidária pelas obrigações das partes.
-    4. O descumprimento de qualquer cláusula implicará multa de 10% sobre o valor total do contrato, além de perdas e danos.
-    5. Este contrato entra em vigor na data de sua assinatura, sendo irretratável e irrevogável.
-    6. Fica eleito o foro da Comarca de <b>${(contrato.foro || "Uberlândia - MG").toUpperCase()}</b> para dirimir quaisquer litígios.
-    ${contrato.observacoes ? `<br/>7. <b>Observações:</b> ${contrato.observacoes}` : ""}
-  </div>
-
-  <!-- Signatures -->
-  <div class="signatures">
-    <div class="sig-block">
-      <div class="sig-line">COMPRADOR</div>
-      <div class="sig-sub">${contrato.comprador.nome}</div>
-      <div class="sig-sub">${contrato.comprador.cpfCnpj}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-line">VENDEDOR</div>
-      <div class="sig-sub">${contrato.produtor.nome}</div>
-      <div class="sig-sub">${contrato.produtor.cpfCnpj}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-line">TESTEMUNHA 1</div>
-      <div class="sig-sub">Nome / CPF</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-line">TESTEMUNHA 2</div>
-      <div class="sig-sub">Nome / CPF</div>
-    </div>
-  </div>
+  <!-- Clauses & Signatures moved to Page 2 -->
 
   <!-- Footer -->
-  <div class="doc-footer">
+  <div class="doc-footer" style="margin-top: 40pt;">
     Documento gerado em ${new Date().toLocaleString("pt-BR")} · Intermediado por Novo Tempo Corretora de Grãos · Página 1 de 2
   </div>
 
@@ -588,56 +569,36 @@ router.get("/:id/pdf", authMiddleware, async (req, res, next) => {
     </div>
     <div class="header-meta">
       Contrato Nº ${contrato.numeroId}<br/>
-      Anexo — Carregamentos &amp; Transações<br/>
+      Anexo e Assinaturas<br/>
       Página 2 de 2
     </div>
   </div>
 
-  <!-- Summary cards -->
-  <div class="summary-grid">
-    <div class="summary-card">
-      <div class="s-label">Sacas Contratadas</div>
-      <div class="s-val">${fmtN(contrato.numSacas, 0)}</div>
-    </div>
-    <div class="summary-card">
-      <div class="s-label">Sacas Retiradas</div>
-      <div class="s-val">${fmtN(calc.sacasRetiradas, 0)}</div>
-    </div>
-    <div class="summary-card">
-      <div class="s-label">Saldo a Retirar</div>
-      <div class="s-val">${fmtN(calc.sacasARetirar, 0)}</div>
-    </div>
-    <div class="summary-card">
-      <div class="s-label">Valor Total Contrato</div>
-      <div class="s-val">${fmt(calc.valorContrato)}</div>
-    </div>
-    <div class="summary-card">
-      <div class="s-label">Valor Carregado</div>
-      <div class="s-val">${fmt(calc.valorCarregado)}</div>
-    </div>
-    <div class="summary-card">
-      <div class="s-label">Comissão Projetada</div>
-      <div class="s-val">${fmt(calc.comissaoProjetada)}</div>
-    </div>
+  <!-- Clauses -->
+  <div class="clauses" style="margin-top: 15pt;">
+    <b>CLÁUSULAS:</b><br/>
+    <div style="white-space: pre-wrap; font-size: 9pt;">1. As partes declaram plena ciência e aceitação das condições estipuladas neste instrumento particular de compra e venda.<br/>
+2. O produto objeto deste contrato está livre de quaisquer ônus, penhoras ou gravames (Lei 13.606/2018).<br/>
+3. A Corretora Novo Tempo atua exclusivamente como intermediária, sem responsabilidade solidária pelas obrigações das partes.<br/>
+4. O descumprimento de qualquer cláusula implicará multa de 10% sobre o valor total do contrato, além de perdas e danos.<br/>
+5. Este contrato entra em vigor na data de sua assinatura, sendo irretratável e irrevogável.<br/>
+6. Fica eleito o foro da Comarca de ${(contrato.foro || "Uberlândia - MG").toUpperCase()} para dirimir quaisquer litígios.</div>
+    ${contrato.observacoes ? `<br/><b>Observações Adicionais:</b> ${contrato.observacoes}` : ""}
   </div>
 
-  <!-- Carregamentos -->
-  <div class="sec-head">Carregamentos (${contrato.carregamentos.length})</div>
-  ${contrato.carregamentos.length > 0
-    ? `<table class="data-table">
-        <thead><tr><th>ID</th><th>Data</th><th>Motorista</th><th>Sacas</th><th>Peso</th><th>Valor</th></tr></thead>
-        <tbody>${carRows}</tbody>
-       </table>`
-    : `<p style="font-size:8.5pt;color:#888;margin-bottom:10pt;">Nenhum carregamento registrado.</p>`}
-
-  <!-- Transações -->
-  <div class="sec-head">Transações (${contrato.transacoes.length})</div>
-  ${contrato.transacoes.length > 0
-    ? `<table class="data-table">
-        <thead><tr><th>ID</th><th>Data</th><th>Categoria</th><th>Método</th><th>Status</th><th>Valor</th></tr></thead>
-        <tbody>${trxRows}</tbody>
-       </table>`
-    : `<p style="font-size:8.5pt;color:#888;margin-bottom:10pt;">Nenhuma transação registrada.</p>`}
+  <!-- Signatures -->
+  <div class="signatures" style="margin-bottom: 30pt;">
+    <div class="sig-block">
+      <div class="sig-line">COMPRADOR</div>
+      <div class="sig-sub">${contrato.comprador.nome}</div>
+      <div class="sig-sub">${contrato.comprador.cpfCnpj}</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line">VENDEDOR</div>
+      <div class="sig-sub">${contrato.produtor.nome}</div>
+      <div class="sig-sub">${contrato.produtor.cpfCnpj}</div>
+    </div>
+  </div>
 
   <!-- Footer -->
   <div class="doc-footer">

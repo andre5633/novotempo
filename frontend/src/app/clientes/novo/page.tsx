@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { CpfCnpjInput } from "@/components/InputMask";
 
 export default function NovoClientePage() {
   const router = useRouter();
@@ -56,16 +57,16 @@ export default function NovoClientePage() {
   return (
     <DashboardLayout>
       <PageHeader title="Novo Cliente" backHref="/clientes" />
-      <div className="max-w-lg">
+      <div className="max-w-2xl">
         <form onSubmit={handleSubmit} className="card space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="col-span-full">
               <label className="label">Nome completo *</label>
               <input className="input" required value={form.nome} onChange={(e) => set("nome", e.target.value)} />
             </div>
             <div>
               <label className="label">CPF / CNPJ *</label>
-              <input className="input" required value={form.cpfCnpj} onChange={(e) => set("cpfCnpj", e.target.value)} placeholder="000.000.000-00" />
+              <CpfCnpjInput className="input" required value={form.cpfCnpj} onChange={(v) => set("cpfCnpj", v)} placeholder="000.000.000-00" />
             </div>
             <div>
               <label className="label">Tipo *</label>
@@ -95,16 +96,16 @@ export default function NovoClientePage() {
               <label className="label">Inscrição Estadual</label>
               <input className="input" value={form.inscricaoEstadual} onChange={(e) => set("inscricaoEstadual", e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-full">
               <label className="label">Fazenda / Local de Produção (para Produtores)</label>
               <input className="input" value={form.fazenda} onChange={(e) => set("fazenda", e.target.value)} placeholder="Fazenda Santo Antônio" />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-full">
               <label className="label">Endereço Completo (para Compradores)</label>
               <input className="input" value={form.endereco} onChange={(e) => set("endereco", e.target.value)} placeholder="Rua, Número, Bairro" />
             </div>
 
-            <div className="col-span-2 pt-4 border-t border-gray-100">
+            <div className="col-span-full pt-4 border-t border-gray-100">
               <h3 className="font-bold text-gray-900 text-sm">Dados Bancários para Recebimento</h3>
             </div>
             <div>

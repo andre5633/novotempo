@@ -9,6 +9,17 @@ import { apiFetch } from "@/lib/api";
 
 const PRODUTOS = ["Soja", "Milho", "Sorgo", "Trigo", "Feijão", "Algodão", "Café", "Outro"];
 
+interface QualidadeRow { item: string; padrao: string; desconto: string; }
+
+const DEFAULT_QUALIDADE: QualidadeRow[] = [
+  { item: "Umidade",        padrao: "Até 14,00 %",          desconto: "Isento até o padrão" },
+  { item: "Impurezas",      padrao: "1,0 % (peneira 3 mm)",  desconto: "Até o limite de 1 %" },
+  { item: "Avariados",      padrao: "5 %",                   desconto: "1×1 conforme limites de tolerância" },
+  { item: "Carunchado",     padrao: "Até 1 %",               desconto: "1×1 até limite de 2 %" },
+  { item: "Insetos / Odor", padrao: "Isento",                desconto: "Produto recusado" },
+  { item: "Quebrado",       padrao: "Até 8 %",               desconto: "1×1 conforme limite de cada peneira" },
+];
+
 interface Cliente { id: string; nome: string; cpfCnpj: string; tipo: string; }
 interface Carregamento {
   id: string; numeroId: string; dataEnvio?: string; motorista?: string; corretor?: string;
@@ -17,7 +28,7 @@ interface Carregamento {
 }
 interface Transacao {
   id: string; numeroId: string; categoria?: string; dataTransacao?: string;
-  metodoPagamento?: string; nfs?: string; status: string; tipoDaNota?: string;
+  metodoPagamento?: string; nfs?: string; nfAcesso?: string; status: string; tipoDaNota?: string;
   valorDebitado: number; refProdutor: number; refComissao: number; observacoes?: string;
 }
 interface Contrato {
@@ -27,7 +38,7 @@ interface Contrato {
   fechamentoOrigem?: string; fechamentoDestino?: string; refPeso: number; observacoes?: string;
   comissaoPagaPor: string; comissaoVendedor: number; comissaoComprador: number;
   fretePorConta?: string; localRetirada?: string; condicoesPagamento?: string;
-  funrural: number; foro?: string;
+  funrural: number; foro?: string; padraoQualidade?: QualidadeRow[];
   comprador: { id: string; nome: string; cpfCnpj: string; endereco?: string; };
   produtor: { id: string; nome: string; cpfCnpj: string; inscricaoEstadual?: string; fazenda?: string; banco?: string; agencia?: string; conta?: string; pix?: string; };
   carregamentos: Carregamento[];
@@ -39,6 +50,31 @@ function InfoRow({ label, value }: { label: string; value: string | React.ReactN
     <div className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="text-sm font-medium text-gray-800">{value}</span>
+    </div>
+  );
+}
+
+function ToggleButtons({ options, value, onChange }: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+            value === opt.value
+              ? "bg-brand-600 text-white"
+              : "bg-white text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -55,6 +91,7 @@ export default function ContratoDetailPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
+  const [editQualidade, setEditQualidade] = useState<QualidadeRow[]>([]);
 
   const [showCarrModal, setShowCarrModal] = useState(false);
   const [showTrxModal, setShowTrxModal] = useState(false);
@@ -64,6 +101,7 @@ export default function ContratoDetailPage() {
   const [trxForm, setTrxForm] = useState<Record<string, string>>({});
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState("");
+  const [confirmingPago, setConfirmingPago] = useState<string | null>(null);
 
   async function load() {
     const res = await apiFetch(`/contratos/${id}`);
@@ -74,7 +112,7 @@ export default function ContratoDetailPage() {
 
   useEffect(() => {
     load();
-    apiFetch("/clientes").then((r) => r.json()).then(setClientes);
+    apiFetch("/clientes").then((r) => r.json()).then((d) => setClientes(Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : [])));
   }, [id]);
 
   if (loading || !contrato) {
@@ -113,12 +151,16 @@ export default function ContratoDetailPage() {
       foro: contrato!.foro || "",
       observacoes: contrato!.observacoes || "",
     });
+    const q = contrato!.padraoQualidade && contrato!.padraoQualidade.length > 0
+      ? contrato!.padraoQualidade.map((r: QualidadeRow) => ({ ...r }))
+      : DEFAULT_QUALIDADE.map((r: QualidadeRow) => ({ ...r }));
+    setEditQualidade(q);
     setEditing(true);
   }
 
   async function saveEdit() {
     setSaving(true);
-    const body = { ...editForm };
+    const body = { ...editForm, padraoQualidade: editQualidade };
     if (!body.dataFechamento) delete body.dataFechamento;
     if (!body.inicio) delete body.inicio;
     if (!body.termino) delete body.termino;
@@ -136,6 +178,20 @@ export default function ContratoDetailPage() {
     if (!confirm(`Excluir o contrato ${contrato!.numeroId}?`)) return;
     await apiFetch(`/contratos/${id}`, { method: "DELETE" });
     router.push("/contratos");
+  }
+
+  async function confirmarPago(trxId: string) {
+    setConfirmingPago(trxId);
+    try {
+      await apiFetch(`/transacoes/${trxId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "pago" }),
+      });
+      load();
+    } finally {
+      setConfirmingPago(null);
+    }
   }
 
   function openCarrModal(carr?: Carregamento) {
@@ -183,10 +239,10 @@ export default function ContratoDetailPage() {
     setEditingTrx(trx || null);
     setTrxForm(trx ? {
       categoria: trx.categoria || "", dataTransacao: trx.dataTransacao ? trx.dataTransacao.split("T")[0] : "",
-      metodoPagamento: trx.metodoPagamento || "", nfs: trx.nfs || "", status: trx.status,
-      tipoDaNota: trx.tipoDaNota || "", valorDebitado: String(trx.valorDebitado),
+      metodoPagamento: trx.metodoPagamento || "", nfs: trx.nfs || "", nfAcesso: trx.nfAcesso || "",
+      status: trx.status, tipoDaNota: trx.tipoDaNota || "", valorDebitado: String(trx.valorDebitado),
       refProdutor: String(trx.refProdutor), refComissao: String(trx.refComissao), observacoes: trx.observacoes || "",
-    } : { categoria: "", dataTransacao: "", metodoPagamento: "", nfs: "", status: "pendente", tipoDaNota: "", valorDebitado: "", refProdutor: "", refComissao: "", observacoes: "" });
+    } : { categoria: "", dataTransacao: "", metodoPagamento: "", nfs: "", nfAcesso: "", status: "pendente", tipoDaNota: "", valorDebitado: "", refProdutor: "", refComissao: "", observacoes: "" });
     setShowTrxModal(true);
   }
 
@@ -214,6 +270,10 @@ export default function ContratoDetailPage() {
     if (!confirm("Excluir esta transação?")) return;
     await apiFetch(`/transacoes/${trxId}`, { method: "DELETE" }); load();
   }
+
+  const qualidadeExibida = (contrato.padraoQualidade && contrato.padraoQualidade.length > 0)
+    ? contrato.padraoQualidade
+    : DEFAULT_QUALIDADE;
 
   return (
     <DashboardLayout>
@@ -267,39 +327,62 @@ export default function ContratoDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 space-y-4">
           {/* Dados / Edição */}
           {!editing ? (
-            <div className="card">
-              <h3 className="font-semibold text-gray-800 mb-3">Informações do Contrato</h3>
-              <div className="grid grid-cols-2 gap-x-8">
-                <div>
-                  <InfoRow label="Produto" value={contrato.produto} />
-                  <InfoRow label="Comprador" value={contrato.comprador.nome} />
-                  <InfoRow label="Produtor" value={contrato.produtor.nome} />
-                  <InfoRow label="Cidade" value={contrato.cidade || "-"} />
-                  <InfoRow label="Fechamento Origem" value={contrato.fechamentoOrigem || "-"} />
-                  <InfoRow label="Fechamento Destino" value={contrato.fechamentoDestino || "-"} />
-                  <InfoRow label="Comissão Paga Por" value={contrato.comissaoPagaPor.toUpperCase()} />
+            <>
+              <div className="card">
+                <h3 className="font-semibold text-gray-800 mb-3">Informações do Contrato</h3>
+                <div className="grid grid-cols-2 gap-x-8">
+                  <div>
+                    <InfoRow label="Produto" value={contrato.produto} />
+                    <InfoRow label="Comprador" value={contrato.comprador.nome} />
+                    <InfoRow label="Produtor" value={contrato.produtor.nome} />
+                    <InfoRow label="Cidade" value={contrato.cidade || "-"} />
+                    <InfoRow label="Fechamento Origem" value={contrato.fechamentoOrigem || "-"} />
+                    <InfoRow label="Fechamento Destino" value={contrato.fechamentoDestino || "-"} />
+                    <InfoRow label="Comissão Paga Por" value={contrato.comissaoPagaPor.toUpperCase()} />
+                  </div>
+                  <div>
+                    <InfoRow label="Data Fechamento" value={formatDate(contrato.dataFechamento)} />
+                    <InfoRow label="Início" value={formatDate(contrato.inicio)} />
+                    <InfoRow label="Término" value={formatDate(contrato.termino)} />
+                    <InfoRow label="Ref. Peso" value={formatNumber(contrato.refPeso, 3)} />
+                    <InfoRow label="Frete" value={contrato.fretePorConta || "-"} />
+                    <InfoRow label="Retirada" value={contrato.localRetirada || "-"} />
+                    <InfoRow label="Foro" value={contrato.foro || "-"} />
+                  </div>
                 </div>
-                <div>
-                  <InfoRow label="Data Fechamento" value={formatDate(contrato.dataFechamento)} />
-                  <InfoRow label="Início" value={formatDate(contrato.inicio)} />
-                  <InfoRow label="Término" value={formatDate(contrato.termino)} />
-                  <InfoRow label="Ref. Peso" value={formatNumber(contrato.refPeso, 3)} />
-                  <InfoRow label="Frete" value={contrato.fretePorConta || "-"} />
-                  <InfoRow label="Retirada" value={contrato.localRetirada || "-"} />
-                  <InfoRow label="Foro" value={contrato.foro || "-"} />
+                {contrato.observacoes && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-500 mb-1">Observações</p>
+                    <p className="text-sm text-gray-700">{contrato.observacoes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Padrão de qualidade (view) */}
+              <div className="card">
+                <h3 className="font-semibold text-gray-800 mb-3">Padrão de Qualidade</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100">
+                      <th className="table-th">Item</th><th className="table-th">Padrão</th><th className="table-th">Desconto fora do padrão</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {qualidadeExibida.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="table-td font-medium">{row.item}</td>
+                          <td className="table-td">{row.padrao}</td>
+                          <td className="table-td text-gray-600">{row.desconto}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-              {contrato.observacoes && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-500 mb-1">Observações</p>
-                  <p className="text-sm text-gray-700">{contrato.observacoes}</p>
-                </div>
-              )}
-            </div>
+            </>
           ) : (
             <div className="card">
               <h3 className="font-semibold text-gray-800 mb-4">Editar Contrato</h3>
@@ -312,22 +395,12 @@ export default function ContratoDetailPage() {
                   { label: "Cidade", key: "cidade" },
                   { label: "Nº Sacas", key: "numSacas", type: "number" },
                   { label: "Valor/Saca (R$)", key: "valorSaca", type: "number" },
-                  { label: "Comissão/Saca (R$)", key: "comissaoPorSaca", type: "number" },
-                  { label: "Comissão Terceiro (R$)", key: "comissaoTerceiro", type: "number" },
                   { label: "Ref. Peso", key: "refPeso", type: "number" },
                   { label: "Fechamento Origem", key: "fechamentoOrigem" },
                   { label: "Fechamento Destino", key: "fechamentoDestino" },
                   { label: "Data Fechamento", key: "dataFechamento", type: "date" },
                   { label: "Início", key: "inicio", type: "date" },
                   { label: "Término", key: "termino", type: "date" },
-                  { label: "Comissão paga por", key: "comissaoPagaPor", type: "select", opts: ["vendedor:Vendedor", "comprador:Comprador", "ambos:Ambos"] },
-                  { label: "Comissão Vendedor (R$/SC)", key: "comissaoVendedor", type: "number" },
-                  { label: "Comissão Comprador (R$/SC)", key: "comissaoComprador", type: "number" },
-                  { label: "Frete", key: "fretePorConta" },
-                  { label: "Retirada", key: "localRetirada" },
-                  { label: "Pagamento", key: "condicoesPagamento" },
-                  { label: "Funrural (%)", key: "funrural", type: "number" },
-                  { label: "Foro", key: "foro" },
                 ].map(({ label, key, type, opts }) => (
                   <div key={key}>
                     <label className="label">{label}</label>
@@ -348,10 +421,104 @@ export default function ContratoDetailPage() {
                     )}
                   </div>
                 ))}
+
+                {/* Quem paga a comissão — botões */}
+                <div className="col-span-2">
+                  <label className="label mb-2">Comissão paga por</label>
+                  <ToggleButtons
+                    value={String(editForm.comissaoPagaPor || "comprador")}
+                    onChange={(v) => setEditForm((f) => ({ ...f, comissaoPagaPor: v }))}
+                    options={[
+                      { value: "comprador", label: "Somente Comprador" },
+                      { value: "vendedor", label: "Somente Vendedor" },
+                      { value: "ambos", label: "Ambos" },
+                    ]}
+                  />
+                </div>
+
+                {(editForm.comissaoPagaPor === "vendedor" || editForm.comissaoPagaPor === "ambos") && (
+                  <div>
+                    <label className="label text-green-700">Comissão Vendedor (R$/SC)</label>
+                    <input className="input border-green-100" type="number" step="0.01" value={String(editForm.comissaoVendedor || "")} onChange={(e) => setEditForm((f) => ({ ...f, comissaoVendedor: Number(e.target.value) }))} />
+                  </div>
+                )}
+                {(editForm.comissaoPagaPor === "comprador" || editForm.comissaoPagaPor === "ambos") && (
+                  <div>
+                    <label className="label text-blue-700">Comissão Comprador (R$/SC)</label>
+                    <input className="input border-blue-100" type="number" step="0.01" value={String(editForm.comissaoComprador || "")} onChange={(e) => setEditForm((f) => ({ ...f, comissaoComprador: Number(e.target.value) }))} />
+                  </div>
+                )}
+
+                <div>
+                  <label className="label">Comissão Terceiro (R$/SC)</label>
+                  <input className="input" type="number" step="0.01" value={String(editForm.comissaoTerceiro || "")} onChange={(e) => setEditForm((f) => ({ ...f, comissaoTerceiro: Number(e.target.value) }))} />
+                </div>
+
+                {/* Frete — botões */}
+                <div className="col-span-2">
+                  <label className="label mb-2">Frete</label>
+                  <ToggleButtons
+                    value={String(editForm.fretePorConta || "")}
+                    onChange={(v) => setEditForm((f) => ({ ...f, fretePorConta: v }))}
+                    options={[
+                      { value: "CIF POR CONTA DO VENDEDOR", label: "CIF — Conta do Vendedor" },
+                      { value: "FOB POR CONTA DO COMPRADOR", label: "FOB — Conta do Comprador" },
+                    ]}
+                  />
+                  <input className="input mt-2 text-xs" placeholder="Ou descreva livremente..."
+                    value={
+                      String(editForm.fretePorConta || "") === "CIF POR CONTA DO VENDEDOR" ||
+                      String(editForm.fretePorConta || "") === "FOB POR CONTA DO COMPRADOR"
+                        ? "" : String(editForm.fretePorConta || "")
+                    }
+                    onChange={(e) => setEditForm((f) => ({ ...f, fretePorConta: e.target.value }))}
+                  />
+                </div>
+
+                {[
+                  { label: "Retirada", key: "localRetirada" },
+                  { label: "Pagamento", key: "condicoesPagamento" },
+                  { label: "Funrural (%)", key: "funrural", type: "number" },
+                  { label: "Foro", key: "foro" },
+                ].map(({ label, key, type }) => (
+                  <div key={key}>
+                    <label className="label">{label}</label>
+                    <input className="input" type={type || "text"} step={type === "number" ? "0.01" : undefined}
+                      value={String(editForm[key] || "")} onChange={(e) => setEditForm((f) => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
+                  </div>
+                ))}
+
                 <div className="col-span-2">
                   <label className="label">Observações</label>
                   <textarea className="input" rows={2} value={String(editForm.observacoes || "")} onChange={(e) => setEditForm((f) => ({ ...f, observacoes: e.target.value }))} />
                 </div>
+              </div>
+
+              {/* Padrão de qualidade editável */}
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <h4 className="font-medium text-gray-700 mb-3">Padrão de Qualidade</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-gray-100">
+                      <th className="table-th w-1/4">Item</th>
+                      <th className="table-th w-1/3">Padrão</th>
+                      <th className="table-th">Desconto fora do padrão</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {editQualidade.map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="py-1 pr-2"><input className="input py-1 text-xs" value={row.item} onChange={(e) => setEditQualidade((r) => r.map((x, i) => i === idx ? { ...x, item: e.target.value } : x))} /></td>
+                          <td className="py-1 pr-2"><input className="input py-1 text-xs" value={row.padrao} onChange={(e) => setEditQualidade((r) => r.map((x, i) => i === idx ? { ...x, padrao: e.target.value } : x))} /></td>
+                          <td className="py-1 flex gap-1 items-center">
+                            <input className="input py-1 text-xs flex-1" value={row.desconto} onChange={(e) => setEditQualidade((r) => r.map((x, i) => i === idx ? { ...x, desconto: e.target.value } : x))} />
+                            <button type="button" onClick={() => setEditQualidade((r) => r.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button type="button" onClick={() => setEditQualidade((r) => [...r, { item: "", padrao: "", desconto: "" }])} className="mt-2 text-xs text-brand-600 hover:underline">+ Adicionar linha</button>
               </div>
             </div>
           )}
@@ -417,7 +584,8 @@ export default function ContratoDetailPage() {
                   <thead><tr className="border-b border-gray-100">
                     <th className="table-th">ID</th><th className="table-th">Categoria</th><th className="table-th">Data</th>
                     <th className="table-th">Método</th><th className="table-th">Valor Debitado</th>
-                    <th className="table-th">Ref. Comissão</th><th className="table-th">NF</th>
+                    <th className="table-th">Ref. Comissão</th><th className="table-th">NF Balança</th>
+                    <th className="table-th">NF Acesso</th>
                     <th className="table-th">Status</th><th className="table-th">Ações</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
@@ -430,10 +598,20 @@ export default function ContratoDetailPage() {
                         <td className="table-td font-medium">{formatCurrency(t.valorDebitado)}</td>
                         <td className="table-td">{formatCurrency(t.refComissao)}</td>
                         <td className="table-td text-xs">{t.nfs || "-"}</td>
+                        <td className="table-td text-xs">{t.nfAcesso || "-"}</td>
                         <td className="table-td"><TransacaoStatusBadge status={t.status} /></td>
                         <td className="table-td">
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
                             <button onClick={() => openTrxModal(t)} className="text-bt-mid text-xs hover:underline">Editar</button>
+                            {t.status === "pendente" && (
+                              <button
+                                onClick={() => confirmarPago(t.id)}
+                                disabled={confirmingPago === t.id}
+                                className="text-xs bg-green-50 text-green-700 border border-green-200 rounded px-2 py-0.5 hover:bg-green-100 transition-colors disabled:opacity-50"
+                              >
+                                {confirmingPago === t.id ? "..." : "✓ Pago"}
+                              </button>
+                            )}
                             {isAdmin && <button onClick={() => deleteTrx(t.id)} className="text-red-500 text-xs hover:underline">Excluir</button>}
                           </div>
                         </td>
@@ -444,7 +622,7 @@ export default function ContratoDetailPage() {
                     <td colSpan={4} className="table-td font-semibold text-bt-dark">Total</td>
                     <td className="table-td font-semibold">{formatCurrency(calc.totalRecebidoCarga)}</td>
                     <td className="table-td font-semibold">{formatCurrency(calc.comissaoRecebida)}</td>
-                    <td colSpan={3} />
+                    <td colSpan={4} />
                   </tr></tfoot>
                 </table>
               </div>
@@ -452,8 +630,8 @@ export default function ContratoDetailPage() {
           </div>
         </div>
 
-        {/* Painel direito */}
-        <div className="space-y-4">
+        {/* Painel direito — sticky */}
+        <div className="space-y-4 sticky top-6">
           <div className="card">
             <h3 className="font-semibold text-gray-800 mb-3">Resumo Financeiro</h3>
             <InfoRow label="Nº Sacas" value={formatNumber(contrato.numSacas, 0)} />
@@ -516,7 +694,7 @@ export default function ContratoDetailPage() {
                 { label: "Valor Carga (R$)", key: "valorCarga", type: "number" },
                 { label: "Ref. Peso", key: "refPeso", type: "number" },
                 { label: "Ref. Valor Saca", key: "refValorSaca", type: "number" },
-                { label: "Umidade Sorgo (%)", key: "umidadeSorgo", type: "number" },
+                { label: "Umidade (%)", key: "umidadeSorgo", type: "number" },
               ].map(({ label, key, type }) => (
                 <div key={key}>
                   <label className="label">{label}</label>
@@ -565,8 +743,9 @@ export default function ContratoDetailPage() {
               <div><label className="label">Valor Debitado (R$)</label><input className="input" type="number" step="0.01" value={trxForm.valorDebitado || ""} onChange={(e) => setTrxForm((f) => ({ ...f, valorDebitado: e.target.value }))} /></div>
               <div><label className="label">Ref. Comissão (R$)</label><input className="input" type="number" step="0.01" value={trxForm.refComissao || ""} onChange={(e) => setTrxForm((f) => ({ ...f, refComissao: e.target.value }))} /></div>
               <div><label className="label">Ref. Produtor (R$)</label><input className="input" type="number" step="0.01" value={trxForm.refProdutor || ""} onChange={(e) => setTrxForm((f) => ({ ...f, refProdutor: e.target.value }))} /></div>
-              <div><label className="label">NFs</label><input className="input" value={trxForm.nfs || ""} onChange={(e) => setTrxForm((f) => ({ ...f, nfs: e.target.value }))} /></div>
               <div><label className="label">Tipo da Nota</label><input className="input" value={trxForm.tipoDaNota || ""} onChange={(e) => setTrxForm((f) => ({ ...f, tipoDaNota: e.target.value }))} /></div>
+              <div><label className="label">NF Balança</label><input className="input" placeholder="NF de Peso de Balança" value={trxForm.nfs || ""} onChange={(e) => setTrxForm((f) => ({ ...f, nfs: e.target.value }))} /></div>
+              <div><label className="label">NF Acesso</label><input className="input" placeholder="NF de Acesso" value={trxForm.nfAcesso || ""} onChange={(e) => setTrxForm((f) => ({ ...f, nfAcesso: e.target.value }))} /></div>
               <div className="col-span-2"><label className="label">Observações</label><textarea className="input" rows={2} value={trxForm.observacoes || ""} onChange={(e) => setTrxForm((f) => ({ ...f, observacoes: e.target.value }))} /></div>
             </div>
             {modalError && <div className="mx-5 mb-2 bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg">{modalError}</div>}

@@ -9,6 +9,7 @@ import carregamentosRouter from "./routes/carregamentos";
 import transacoesRouter from "./routes/transacoes";
 import dashboardRouter from "./routes/dashboard";
 import authRouter from "./routes/auth";
+import motoristasRouter from "./routes/motoristas";
 import { errorHandler } from "./middleware/errorHandler";
 
 dotenv.config();
@@ -68,6 +69,7 @@ app.use("/api/carregamentos", carregamentosRouter);
 app.use("/api/transacoes", transacoesRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/motoristas", motoristasRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ status: "ok", ts: new Date().toISOString() }));
@@ -75,10 +77,8 @@ app.get("/health", (_req, res) => res.json({ status: "ok", ts: new Date().toISOS
 // ── Global error handler (must be last) ──────────────────────────────────────
 app.use(errorHandler);
 
-if (process.env.NODE_ENV !== "production") {
-  app.listen(port, () => {
-    console.log(`Backend running on http://localhost:${port}`);
-  });
-}
+app.listen(port, () => {
+  console.log(`Backend rodando na porta ${port} [${process.env.NODE_ENV || "development"}]`);
+});
 
 export default app;

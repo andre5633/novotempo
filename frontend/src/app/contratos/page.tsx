@@ -1,6 +1,7 @@
 "use client";
 import DashboardLayout from "../dashboard-layout";
 import PageHeader from "@/components/PageHeader";
+import Pagination from "@/components/Pagination";
 import { ContratoStatusBadge } from "@/components/StatusBadge";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -25,6 +26,8 @@ interface Contrato {
   transacoes: { valorDebitado: number; refComissao: number; refProdutor: number }[];
 }
 
+const LIMIT = 15;
+
 export default function ContratosPage() {
   const { data: session } = useSession();
   const isAdmin = (session?.user as { role?: string })?.role === "admin";
@@ -32,25 +35,36 @@ export default function ContratosPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
 
-  async function load() {
+  async function load(p = page) {
     setLoading(true);
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (q) params.set("q", q);
-    const res = await apiFetch(`/contratos?${params}`);
-    const data = await res.json();
-    setContratos(data);
+    params.set("page", String(p));
+    params.set("limit", String(LIMIT));
+    try {
+      const res = await apiFetch(`/contratos?${params}`);
+      const data = await res.json();
+      setContratos(Array.isArray(data.data) ? data.data : []);
+      if (data.meta) setMeta({ total: data.meta.total, totalPages: data.meta.totalPages });
+    } catch {
+      setContratos([]);
+    }
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [status, q]);
+  useEffect(() => { setPage(1); }, [status, q]);
+  useEffect(() => { load(page); }, [status, q, page]);
+
 
   return (
     <DashboardLayout>
       <PageHeader
         title="Contratos"
-        subtitle={`${contratos.length} registros`}
+        subtitle={`${meta.total} contratos`}
         action={isAdmin ? { label: "Novo Contrato", href: "/contratos/novo" } : undefined}
       />
 
@@ -128,6 +142,7 @@ export default function ContratosPage() {
             </table>
           </div>
         )}
+        <Pagination page={page} totalPages={meta.totalPages} total={meta.total} limit={LIMIT} onPageChange={setPage} />
       </div>
     </DashboardLayout>
   );

@@ -35,6 +35,12 @@ export const carregamentoSchema = z.object({
 
 export const carregamentoUpdateSchema = carregamentoSchema.omit({ contratoId: true }).partial();
 
+const padraoQualidadeRowSchema = z.object({
+  item:     z.string(),
+  padrao:   z.string(),
+  desconto: z.string(),
+});
+
 export const contratoSchema = z.object({
   produto:            z.string().min(1, "Produto é obrigatório"),
   compradorId:        z.string().min(1, "Comprador é obrigatório"),
@@ -60,7 +66,17 @@ export const contratoSchema = z.object({
   dataFechamento:     z.string().optional().nullable(),
   inicio:             z.string().optional().nullable(),
   termino:            z.string().optional().nullable(),
+  padraoQualidade:    z.array(padraoQualidadeRowSchema).optional().nullable(),
 });
+
+export const motoristaSchema = z.object({
+  nome:     z.string().min(1, "Nome é obrigatório"),
+  cpfCnpj:  z.string().optional().nullable(),
+  telefone: z.string().optional().nullable(),
+  placa:    z.string().optional().nullable(),
+});
+
+export const motoristaUpdateSchema = motoristaSchema.partial();
 
 export const contratoUpdateSchema = contratoSchema.partial();
 
@@ -69,6 +85,7 @@ export const transacaoSchema = z.object({
   categoria:       z.string().optional().nullable(),
   metodoPagamento: z.string().optional().nullable(),
   nfs:             z.string().optional().nullable(),
+  nfAcesso:        z.string().optional().nullable(),
   status:          z.enum(["pendente", "pago", "cancelado"]).default("pendente"),
   tipoDaNota:      z.string().optional().nullable(),
   valorDebitado:   z.coerce.number().min(0).default(0),

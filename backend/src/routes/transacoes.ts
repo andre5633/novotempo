@@ -50,21 +50,29 @@ router.get("/uploads/:filename", authMiddleware, (req, res) => {
   res.sendFile(filePath);
 });
 
-// GET /api/transacoes?contratoId=&page=&limit=
+// GET /api/transacoes?contratoId=&status=&dataInicio=&dataFim=&comprador=&produtor=&page=&limit=
 router.get("/", authMiddleware, async (req, res, next) => {
   try {
-    const { contratoId, page, limit } = req.query;
+    const { contratoId, status, dataInicio, dataFim, comprador, produtor, page, limit } = req.query;
     const pageNum = Math.max(1, parseInt(String(page || "1")));
     const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || "20"))));
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
     if (contratoId) where.contratoId = String(contratoId);
+    if (status) where.status = String(status);
+    if (dataInicio || dataFim) {
+      where.dataTransacao = {};
+      if (dataInicio) where.dataTransacao.gte = new Date(String(dataInicio));
+      if (dataFim) where.dataTransacao.lte = new Date(String(dataFim) + "T23:59:59");
+    }
+    if (comprador) where.contrato = { ...where.contrato, comprador: { nome: { contains: String(comprador), mode: "insensitive" } } };
+    if (produtor) where.contrato = { ...where.contrato, produtor: { nome: { contains: String(produtor), mode: "insensitive" } } };
 
     const [data, total] = await Promise.all([
       prisma.transacao.findMany({
         where,
-        include: { contrato: true },
+        include: { contrato: { include: { comprador: true, produtor: true } } },
         orderBy: { createdAt: "desc" },
         skip,
         take: limitNum,
@@ -99,13 +107,14 @@ router.post(
       const numeroId = generateNumeroId("TRX");
 
       // Use `as any` because comprovante was just added via migration and TS server may cache old types
-      const transacao = await (prisma.transacao.create as any)({
+      const transacao = await prisma.transacao.create({
         data: {
           numeroId,
           contratoId: data.contratoId,
           categoria: data.categoria ?? null,
           metodoPagamento: data.metodoPagamento ?? null,
           nfs: data.nfs ?? null,
+          nfAcesso: data.nfAcesso ?? null,
           status: data.status,
           tipoDaNota: data.tipoDaNota ?? null,
           observacoes: data.observacoes ?? null,
@@ -144,7 +153,7 @@ router.put(
       if (data.dataTransacao) updateData.dataTransacao = new Date(data.dataTransacao);
 
       if (req.file) {
-        const existing = await (prisma.transacao.findUnique as any)({ where: { id: String(req.params.id) } });
+        const existing = await prisma.transacao.findUnique({ where: { id: String(req.params.id) } });
         if (existing?.comprovante) {
           const oldPath = path.join(uploadsDir, existing.comprovante);
           if (fs.existsSync(oldPath)) fs.unlink(oldPath, () => {});
@@ -170,7 +179,7 @@ router.put(
 // DELETE /api/transacoes/:id — admin only
 router.delete("/:id", authMiddleware, adminOnly, async (req, res, next) => {
   try {
-    const existing = await (prisma.transacao.findUnique as any)({ where: { id: String(req.params.id) } });
+    const existing = await prisma.transacao.findUnique({ where: { id: String(req.params.id) } });
     if (existing?.comprovante) {
       const filePath = path.join(uploadsDir, existing.comprovante);
       if (fs.existsSync(filePath)) fs.unlink(filePath, () => {});

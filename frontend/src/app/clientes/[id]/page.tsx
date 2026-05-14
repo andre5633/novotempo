@@ -85,10 +85,10 @@ export default function EditarClientePage() {
   return (
     <DashboardLayout>
       <PageHeader title="Editar Cliente" backHref="/clientes" />
-      <div className="max-w-lg">
+      <div className="max-w-2xl">
         <form onSubmit={handleSubmit} className="card space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="col-span-full">
               <label className="label">Nome completo *</label>
               <input className="input" required value={form.nome} onChange={(e) => set("nome", e.target.value)} />
             </div>
@@ -120,7 +120,7 @@ export default function EditarClientePage() {
               <label className="label">Estado</label>
               <input className="input" value={form.estado} onChange={(e) => set("estado", e.target.value)} maxLength={2} />
             </div>
-            <div className="col-span-2 border-t border-gray-100 pt-4 mt-2">
+            <div className="col-span-full border-t border-gray-100 pt-4 mt-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Informações Adicionais</h3>
             </div>
             <div>
@@ -131,11 +131,11 @@ export default function EditarClientePage() {
               <label className="label">Fazenda</label>
               <input className="input" value={form.fazenda} onChange={(e) => set("fazenda", e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-full">
               <label className="label">Endereço Completo</label>
               <input className="input" value={form.endereco} onChange={(e) => set("endereco", e.target.value)} />
             </div>
-            <div className="col-span-2 border-t border-gray-100 pt-4 mt-2">
+            <div className="col-span-full border-t border-gray-100 pt-4 mt-2">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Dados Bancários</h3>
             </div>
             <div>
