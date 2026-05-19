@@ -20,6 +20,15 @@ const DEFAULT_QUALIDADE: QualidadeRow[] = [
   { item: "Quebrado",       padrao: "Até 8 %",               desconto: "1×1 conforme limite de cada peneira" },
 ];
 
+function defaultClausulas(foro?: string) {
+  return `1. As partes declaram plena ciência e aceitação das condições estipuladas neste instrumento particular de compra e venda.
+2. O produto objeto deste contrato está livre de quaisquer ônus, penhoras ou gravames (Lei 13.606/2018).
+3. A Corretora Novo Tempo atua exclusivamente como intermediária, sem responsabilidade solidária pelas obrigações das partes.
+4. O descumprimento de qualquer cláusula implicará multa de 10% sobre o valor total do contrato, além de perdas e danos.
+5. Este contrato entra em vigor na data de sua assinatura, sendo irretratável e irrevogável.
+6. Fica eleito o foro da Comarca de ${foro || "Uberlândia - MG"} para dirimir quaisquer litígios.`;
+}
+
 interface MotoristaOpt { id: string; nome: string; placaCavalo?: string; }
 interface Cliente { id: string; nome: string; cpfCnpj: string; tipo: string; }
 interface Carregamento {
@@ -190,7 +199,7 @@ export default function ContratoDetailPage() {
       funrural: contrato!.funrural,
       foro: contrato!.foro || "",
       observacoes: contrato!.observacoes || "",
-      clausulas: contrato!.clausulas || "",
+      clausulas: contrato!.clausulas || defaultClausulas(contrato!.foro),
     });
     const q = contrato!.padraoQualidade && contrato!.padraoQualidade.length > 0
       ? contrato!.padraoQualidade.map((r: QualidadeRow) => ({ ...r }))
@@ -459,11 +468,9 @@ export default function ContratoDetailPage() {
 
               {/* Cláusulas — fechado por padrão */}
               <CollapsibleCard title="Cláusulas" defaultOpen={false}>
-                {contrato.clausulas ? (
-                  <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{contrato.clausulas}</p>
-                ) : (
-                  <p className="text-sm text-gray-400">Nenhuma cláusula registrada.</p>
-                )}
+                <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                  {contrato.clausulas || defaultClausulas(contrato.foro)}
+                </p>
               </CollapsibleCard>
             </>
           ) : (
