@@ -199,7 +199,7 @@ export default function ContratoDetailPage() {
       funrural: contrato!.funrural,
       foro: contrato!.foro || "",
       observacoes: contrato!.observacoes || "",
-      clausulas: contrato!.clausulas || defaultClausulas(contrato!.foro),
+      clausulas: (contrato!.clausulas && contrato!.clausulas !== "null") ? contrato!.clausulas : defaultClausulas(contrato!.foro),
     });
     const q = contrato!.padraoQualidade && contrato!.padraoQualidade.length > 0
       ? contrato!.padraoQualidade.map((r: QualidadeRow) => ({ ...r }))
@@ -469,7 +469,7 @@ export default function ContratoDetailPage() {
               {/* Cláusulas — fechado por padrão */}
               <CollapsibleCard title="Cláusulas" defaultOpen={false}>
                 <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
-                  {contrato.clausulas || defaultClausulas(contrato.foro)}
+                  {(contrato.clausulas && contrato.clausulas !== "null") ? contrato.clausulas : defaultClausulas(contrato.foro)}
                 </p>
               </CollapsibleCard>
             </>
