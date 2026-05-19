@@ -7,7 +7,7 @@ services:
     container_name: boaterra-backend
     restart: always
     ports:
-      - "3002:3002"
+      - "8094:3002"
     environment:
       PORT: 3002
       NODE_ENV: production
@@ -30,7 +30,7 @@ services:
     container_name: boaterra-frontend
     restart: always
     ports:
-      - "3001:3001"
+      - "8093:3001"
     environment:
       PORT: 3001
       NODE_ENV: production
