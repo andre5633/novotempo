@@ -1,7 +1,7 @@
 "use client";
 import DashboardLayout from "../../dashboard-layout";
 import { ContratoStatusBadge, TransacaoStatusBadge } from "@/components/StatusBadge";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { formatCurrency, formatNumber, formatDate, calcContrato } from "@/lib/utils";
@@ -20,6 +20,7 @@ const DEFAULT_QUALIDADE: QualidadeRow[] = [
   { item: "Quebrado",       padrao: "Até 8 %",               desconto: "1×1 conforme limite de cada peneira" },
 ];
 
+interface MotoristaOpt { id: string; nome: string; placaCavalo?: string; }
 interface Cliente { id: string; nome: string; cpfCnpj: string; tipo: string; }
 interface Carregamento {
   id: string; numeroId: string; dataEnvio?: string; motorista?: string; corretor?: string;
@@ -35,7 +36,8 @@ interface Contrato {
   id: string; numeroId: string; status: string; produto: string; cidade?: string;
   numSacas: number; valorSaca: number; comissaoPorSaca: number; comissaoTerceiro: number;
   dataFechamento?: string; inicio?: string; termino?: string;
-  fechamentoOrigem?: string; fechamentoDestino?: string; refPeso: number; observacoes?: string;
+  fechamentoOrigem?: string; fechamentoDestino?: string; refPeso: number;
+  observacoes?: string; clausulas?: string;
   comissaoPagaPor: string; comissaoVendedor: number; comissaoComprador: number;
   fretePorConta?: string; localRetirada?: string; condicoesPagamento?: string;
   funrural: number; foro?: string; padraoQualidade?: QualidadeRow[];
@@ -45,11 +47,31 @@ interface Contrato {
   transacoes: Transacao[];
 }
 
-function InfoRow({ label, value }: { label: string; value: string | React.ReactNode }) {
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function InfoRow({ label, value }: { label: string; value: string | ReactNode }) {
   return (
     <div className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="text-sm font-medium text-gray-800">{value}</span>
+    </div>
+  );
+}
+
+function CollapsibleCard({ title, defaultOpen = true, children }: {
+  title: string; defaultOpen?: boolean; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <h3 className="font-semibold text-gray-800">{title}</h3>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && <div className="mt-3">{children}</div>}
     </div>
   );
 }
@@ -62,22 +84,18 @@ function ToggleButtons({ options, value, onChange }: {
   return (
     <div className="flex rounded-lg border border-gray-200 overflow-hidden">
       {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)}
           className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-            value === opt.value
-              ? "bg-brand-600 text-white"
-              : "bg-white text-gray-600 hover:bg-gray-50"
-          }`}
-        >
+            value === opt.value ? "bg-brand-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+          }`}>
           {opt.label}
         </button>
       ))}
     </div>
   );
 }
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ContratoDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -103,6 +121,11 @@ export default function ContratoDetailPage() {
   const [modalError, setModalError] = useState("");
   const [confirmingPago, setConfirmingPago] = useState<string | null>(null);
 
+  // Motorista combobox
+  const [motoristaOptions, setMotoristaOptions] = useState<MotoristaOpt[]>([]);
+  const [motoristaSearch, setMotoristaSearch] = useState("");
+  const [showMotoristaDrop, setShowMotoristaDrop] = useState(false);
+
   async function load() {
     const res = await apiFetch(`/contratos/${id}`);
     const data = await res.json();
@@ -112,8 +135,18 @@ export default function ContratoDetailPage() {
 
   useEffect(() => {
     load();
-    apiFetch("/clientes").then((r) => r.json()).then((d) => setClientes(Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : [])));
+    apiFetch("/clientes?limit=200").then((r) => r.json()).then((d) =>
+      setClientes(Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []))
+    );
   }, [id]);
+
+  // Carrega motoristas quando o modal de carregamento abre
+  useEffect(() => {
+    if (!showCarrModal) return;
+    apiFetch("/motoristas?limit=200").then((r) => r.json()).then((d) =>
+      setMotoristaOptions(Array.isArray(d.data) ? d.data : [])
+    );
+  }, [showCarrModal]);
 
   if (loading || !contrato) {
     return (
@@ -128,6 +161,13 @@ export default function ContratoDetailPage() {
   const calc = calcContrato(contrato);
   const produtores = clientes.filter((c) => c.tipo === "produtor" || c.tipo === "ambos");
   const compradores = clientes.filter((c) => c.tipo === "comprador" || c.tipo === "ambos");
+
+  // Motoristas filtrados pelo texto digitado
+  const filteredMotoristas = motoristaOptions.filter((m) =>
+    !motoristaSearch ||
+    m.nome.toLowerCase().includes(motoristaSearch.toLowerCase()) ||
+    (m.placaCavalo && m.placaCavalo.toLowerCase().includes(motoristaSearch.toLowerCase()))
+  );
 
   function startEdit() {
     setEditForm({
@@ -150,6 +190,7 @@ export default function ContratoDetailPage() {
       funrural: contrato!.funrural,
       foro: contrato!.foro || "",
       observacoes: contrato!.observacoes || "",
+      clausulas: contrato!.clausulas || "",
     });
     const q = contrato!.padraoQualidade && contrato!.padraoQualidade.length > 0
       ? contrato!.padraoQualidade.map((r: QualidadeRow) => ({ ...r }))
@@ -171,6 +212,15 @@ export default function ContratoDetailPage() {
     });
     setSaving(false);
     setEditing(false);
+    load();
+  }
+
+  async function updateStatus(newStatus: string) {
+    await apiFetch(`/contratos/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
     load();
   }
 
@@ -197,6 +247,9 @@ export default function ContratoDetailPage() {
   function openCarrModal(carr?: Carregamento) {
     setModalError("");
     setEditingCarr(carr || null);
+    const motNome = carr?.motorista || "";
+    setMotoristaSearch(motNome);
+    setShowMotoristaDrop(false);
     setCarrForm(carr ? {
       dataEnvio: carr.dataEnvio ? carr.dataEnvio.split("T")[0] : "",
       motorista: carr.motorista || "", corretor: carr.corretor || "",
@@ -205,7 +258,11 @@ export default function ContratoDetailPage() {
       refPeso: String(carr.refPeso), refValorSaca: String(carr.refValorSaca),
       umidadeSorgo: carr.umidadeSorgo != null ? String(carr.umidadeSorgo) : "",
       observacoes: carr.observacoes || "",
-    } : { produto: contrato!.produto, dataEnvio: "", motorista: "", corretor: "", pesoKg: "", qntSacas: "", valorCarga: "", refPeso: "", refValorSaca: "", umidadeSorgo: "", observacoes: "" });
+    } : {
+      produto: contrato!.produto, dataEnvio: "", motorista: "", corretor: "",
+      pesoKg: "", qntSacas: "", valorCarga: "", refPeso: "", refValorSaca: "",
+      umidadeSorgo: "", observacoes: "",
+    });
     setShowCarrModal(true);
   }
 
@@ -214,14 +271,14 @@ export default function ContratoDetailPage() {
     setModalError("");
     try {
       const url = editingCarr ? `/carregamentos/${editingCarr.id}` : "/carregamentos";
-      const res = await apiFetch(url, { method: editingCarr ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...carrForm, contratoId: id }) });
+      const res = await apiFetch(url, {
+        method: editingCarr ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...carrForm, contratoId: id }),
+      });
       const d = await res.json();
-      if (res.ok) {
-        setShowCarrModal(false);
-        load();
-      } else {
-        setModalError(d.error || "Erro ao salvar carregamento");
-      }
+      if (res.ok) { setShowCarrModal(false); load(); }
+      else setModalError(d.error || "Erro ao salvar carregamento");
     } catch {
       setModalError("Erro de conexão. Tente novamente.");
     } finally {
@@ -242,7 +299,10 @@ export default function ContratoDetailPage() {
       metodoPagamento: trx.metodoPagamento || "", nfs: trx.nfs || "", nfAcesso: trx.nfAcesso || "",
       status: trx.status, tipoDaNota: trx.tipoDaNota || "", valorDebitado: String(trx.valorDebitado),
       refProdutor: String(trx.refProdutor), refComissao: String(trx.refComissao), observacoes: trx.observacoes || "",
-    } : { categoria: "", dataTransacao: "", metodoPagamento: "", nfs: "", nfAcesso: "", status: "pendente", tipoDaNota: "", valorDebitado: "", refProdutor: "", refComissao: "", observacoes: "" });
+    } : {
+      categoria: "", dataTransacao: "", metodoPagamento: "", nfs: "", nfAcesso: "",
+      status: "pendente", tipoDaNota: "", valorDebitado: "", refProdutor: "", refComissao: "", observacoes: "",
+    });
     setShowTrxModal(true);
   }
 
@@ -251,14 +311,14 @@ export default function ContratoDetailPage() {
     setModalError("");
     try {
       const url = editingTrx ? `/transacoes/${editingTrx.id}` : "/transacoes";
-      const res = await apiFetch(url, { method: editingTrx ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...trxForm, contratoId: id }) });
+      const res = await apiFetch(url, {
+        method: editingTrx ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...trxForm, contratoId: id }),
+      });
       const d = await res.json();
-      if (res.ok) {
-        setShowTrxModal(false);
-        load();
-      } else {
-        setModalError(d.error || "Erro ao salvar transação");
-      }
+      if (res.ok) { setShowTrxModal(false); load(); }
+      else setModalError(d.error || "Erro ao salvar transação");
     } catch {
       setModalError("Erro de conexão. Tente novamente.");
     } finally {
@@ -278,15 +338,27 @@ export default function ContratoDetailPage() {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push("/contratos")} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900">{contrato.numeroId}</h1>
               <ContratoStatusBadge status={contrato.status} />
+              {/* Status rápido — admin only */}
+              {isAdmin && (
+                <select
+                  value={contrato.status}
+                  onChange={(e) => updateStatus(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                >
+                  <option value="nao_iniciado">Não Iniciado</option>
+                  <option value="em_andamento">Em Andamento</option>
+                  <option value="concluido">Concluído</option>
+                </select>
+              )}
             </div>
             <p className="text-sm text-gray-500">{contrato.produto} · {contrato.comprador.nome}</p>
           </div>
@@ -329,12 +401,13 @@ export default function ContratoDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 space-y-4">
-          {/* Dados / Edição */}
+
+          {/* ── View mode com seções colapsáveis ── */}
           {!editing ? (
             <>
-              <div className="card">
-                <h3 className="font-semibold text-gray-800 mb-3">Informações do Contrato</h3>
-                <div className="grid grid-cols-2 gap-x-8">
+              {/* Informações do Contrato — aberto por padrão */}
+              <CollapsibleCard title="Informações do Contrato" defaultOpen={true}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                   <div>
                     <InfoRow label="Produto" value={contrato.produto} />
                     <InfoRow label="Comprador" value={contrato.comprador.nome} />
@@ -360,15 +433,16 @@ export default function ContratoDetailPage() {
                     <p className="text-sm text-gray-700">{contrato.observacoes}</p>
                   </div>
                 )}
-              </div>
+              </CollapsibleCard>
 
-              {/* Padrão de qualidade (view) */}
-              <div className="card">
-                <h3 className="font-semibold text-gray-800 mb-3">Padrão de Qualidade</h3>
+              {/* Padrão de Qualidade — fechado por padrão */}
+              <CollapsibleCard title="Padrão de Qualidade" defaultOpen={false}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="border-b border-gray-100">
-                      <th className="table-th">Item</th><th className="table-th">Padrão</th><th className="table-th">Desconto fora do padrão</th>
+                      <th className="table-th">Item</th>
+                      <th className="table-th">Padrão</th>
+                      <th className="table-th">Desconto fora do padrão</th>
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {qualidadeExibida.map((row, i) => (
@@ -381,12 +455,22 @@ export default function ContratoDetailPage() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </CollapsibleCard>
+
+              {/* Cláusulas — fechado por padrão */}
+              <CollapsibleCard title="Cláusulas" defaultOpen={false}>
+                {contrato.clausulas ? (
+                  <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{contrato.clausulas}</p>
+                ) : (
+                  <p className="text-sm text-gray-400">Nenhuma cláusula registrada.</p>
+                )}
+              </CollapsibleCard>
             </>
           ) : (
+            /* ── Edit mode ── */
             <div className="card">
               <h3 className="font-semibold text-gray-800 mb-4">Editar Contrato</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   { label: "Produto", key: "produto", type: "select", opts: PRODUTOS },
                   { label: "Status", key: "status", type: "select", opts: ["nao_iniciado:Não Iniciado", "em_andamento:Em Andamento", "concluido:Concluído"] },
@@ -417,13 +501,13 @@ export default function ContratoDetailPage() {
                       </select>
                     ) : (
                       <input className="input" type={type || "text"} step={type === "number" ? "0.01" : undefined}
-                        value={String(editForm[key] || "")} onChange={(e) => setEditForm((f) => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
+                        value={String(editForm[key] || "")}
+                        onChange={(e) => setEditForm((f) => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
                     )}
                   </div>
                 ))}
 
-                {/* Quem paga a comissão — botões */}
-                <div className="col-span-2">
+                <div className="col-span-full">
                   <label className="label mb-2">Comissão paga por</label>
                   <ToggleButtons
                     value={String(editForm.comissaoPagaPor || "comprador")}
@@ -435,7 +519,6 @@ export default function ContratoDetailPage() {
                     ]}
                   />
                 </div>
-
                 {(editForm.comissaoPagaPor === "vendedor" || editForm.comissaoPagaPor === "ambos") && (
                   <div>
                     <label className="label text-green-700">Comissão Vendedor (R$/SC)</label>
@@ -448,14 +531,12 @@ export default function ContratoDetailPage() {
                     <input className="input border-blue-100" type="number" step="0.01" value={String(editForm.comissaoComprador || "")} onChange={(e) => setEditForm((f) => ({ ...f, comissaoComprador: Number(e.target.value) }))} />
                   </div>
                 )}
-
                 <div>
                   <label className="label">Comissão Terceiro (R$/SC)</label>
                   <input className="input" type="number" step="0.01" value={String(editForm.comissaoTerceiro || "")} onChange={(e) => setEditForm((f) => ({ ...f, comissaoTerceiro: Number(e.target.value) }))} />
                 </div>
 
-                {/* Frete — botões */}
-                <div className="col-span-2">
+                <div className="col-span-full">
                   <label className="label mb-2">Frete</label>
                   <ToggleButtons
                     value={String(editForm.fretePorConta || "")}
@@ -484,13 +565,18 @@ export default function ContratoDetailPage() {
                   <div key={key}>
                     <label className="label">{label}</label>
                     <input className="input" type={type || "text"} step={type === "number" ? "0.01" : undefined}
-                      value={String(editForm[key] || "")} onChange={(e) => setEditForm((f) => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
+                      value={String(editForm[key] || "")}
+                      onChange={(e) => setEditForm((f) => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
                   </div>
                 ))}
 
-                <div className="col-span-2">
+                <div className="col-span-full">
                   <label className="label">Observações</label>
                   <textarea className="input" rows={2} value={String(editForm.observacoes || "")} onChange={(e) => setEditForm((f) => ({ ...f, observacoes: e.target.value }))} />
+                </div>
+                <div className="col-span-full">
+                  <label className="label">Cláusulas</label>
+                  <textarea className="input" rows={5} value={String(editForm.clausulas || "")} onChange={(e) => setEditForm((f) => ({ ...f, clausulas: e.target.value }))} />
                 </div>
               </div>
 
@@ -523,7 +609,7 @@ export default function ContratoDetailPage() {
             </div>
           )}
 
-          {/* Carregamentos */}
+          {/* ── Carregamentos ── */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-800">Carregamentos ({contrato.carregamentos.length})</h3>
@@ -535,8 +621,9 @@ export default function ContratoDetailPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px]">
                   <thead><tr className="border-b border-gray-100">
-                    <th className="table-th">ID</th><th className="table-th">Data</th><th className="table-th">Motorista</th>
-                    <th className="table-th">Sacas</th><th className="table-th">Peso(kg)</th><th className="table-th">Valor Carga</th>
+                    <th className="table-th">ID</th><th className="table-th">Data</th>
+                    <th className="table-th">Motorista</th><th className="table-th">Sacas</th>
+                    <th className="table-th">Peso(kg)</th><th className="table-th">Valor Carga</th>
                     <th className="table-th">Umidade</th><th className="table-th">Ações</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
@@ -570,7 +657,7 @@ export default function ContratoDetailPage() {
             )}
           </div>
 
-          {/* Transações */}
+          {/* ── Transações ── */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-800">Transações ({contrato.transacoes.length})</h3>
@@ -582,10 +669,10 @@ export default function ContratoDetailPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px]">
                   <thead><tr className="border-b border-gray-100">
-                    <th className="table-th">ID</th><th className="table-th">Categoria</th><th className="table-th">Data</th>
-                    <th className="table-th">Método</th><th className="table-th">Valor Debitado</th>
-                    <th className="table-th">Ref. Comissão</th><th className="table-th">NF Balança</th>
-                    <th className="table-th">NF Acesso</th>
+                    <th className="table-th">ID</th><th className="table-th">Categoria</th>
+                    <th className="table-th">Data</th><th className="table-th">Método</th>
+                    <th className="table-th">Valor Debitado</th><th className="table-th">Ref. Comissão</th>
+                    <th className="table-th">NF Balança</th><th className="table-th">NF Acesso</th>
                     <th className="table-th">Status</th><th className="table-th">Ações</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
@@ -631,7 +718,7 @@ export default function ContratoDetailPage() {
         </div>
 
         {/* Painel direito — sticky */}
-        <div className="space-y-4 sticky top-6">
+        <div className="space-y-4 lg:sticky top-6">
           <div className="card">
             <h3 className="font-semibold text-gray-800 mb-3">Resumo Financeiro</h3>
             <InfoRow label="Nº Sacas" value={formatNumber(contrato.numSacas, 0)} />
@@ -675,30 +762,78 @@ export default function ContratoDetailPage() {
         </div>
       </div>
 
-      {/* Modal Carregamento */}
+      {/* ── Modal Carregamento ── */}
       {showCarrModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-semibold">{editingCarr ? "Editar" : "Novo"} Carregamento</h3>
-              <button onClick={() => setShowCarrModal(false)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button onClick={() => setShowCarrModal(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <div className="p-5 grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Data Envio</label>
+                <input className="input" type="date" value={carrForm.dataEnvio || ""} onChange={(e) => setCarrForm((f) => ({ ...f, dataEnvio: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Produto</label>
+                <input className="input" value={carrForm.produto || ""} onChange={(e) => setCarrForm((f) => ({ ...f, produto: e.target.value }))} />
+              </div>
+
+              {/* Motorista — combobox com search */}
+              <div className="col-span-2 relative">
+                <label className="label">Motorista</label>
+                <input
+                  className="input"
+                  placeholder="Buscar por nome ou placa..."
+                  value={motoristaSearch}
+                  onChange={(e) => {
+                    setMotoristaSearch(e.target.value);
+                    setCarrForm((f) => ({ ...f, motorista: e.target.value }));
+                    setShowMotoristaDrop(true);
+                  }}
+                  onFocus={() => setShowMotoristaDrop(true)}
+                  onBlur={() => setTimeout(() => setShowMotoristaDrop(false), 150)}
+                />
+                {showMotoristaDrop && filteredMotoristas.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-44 overflow-y-auto">
+                    {filteredMotoristas.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setCarrForm((f) => ({ ...f, motorista: m.nome }));
+                          setMotoristaSearch(m.nome);
+                          setShowMotoristaDrop(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between gap-2"
+                      >
+                        <span className="font-medium">{m.nome}</span>
+                        {m.placaCavalo && <span className="text-xs text-gray-400 font-mono">{m.placaCavalo}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="label">Corretor</label>
+                <input className="input" value={carrForm.corretor || ""} onChange={(e) => setCarrForm((f) => ({ ...f, corretor: e.target.value }))} />
+              </div>
               {[
-                { label: "Data Envio", key: "dataEnvio", type: "date" },
-                { label: "Produto", key: "produto" },
-                { label: "Motorista", key: "motorista" },
-                { label: "Corretor", key: "corretor" },
-                { label: "Qnt Sacas", key: "qntSacas", type: "number" },
-                { label: "Peso (kg)", key: "pesoKg", type: "number" },
-                { label: "Valor Carga (R$)", key: "valorCarga", type: "number" },
-                { label: "Ref. Peso", key: "refPeso", type: "number" },
-                { label: "Ref. Valor Saca", key: "refValorSaca", type: "number" },
-                { label: "Umidade (%)", key: "umidadeSorgo", type: "number" },
-              ].map(({ label, key, type }) => (
+                { label: "Qnt Sacas", key: "qntSacas" },
+                { label: "Peso (kg)", key: "pesoKg" },
+                { label: "Valor Carga (R$)", key: "valorCarga" },
+                { label: "Ref. Peso", key: "refPeso" },
+                { label: "Ref. Valor Saca", key: "refValorSaca" },
+                { label: "Umidade (%)", key: "umidadeSorgo" },
+              ].map(({ label, key }) => (
                 <div key={key}>
                   <label className="label">{label}</label>
-                  <input className="input" type={type || "text"} step={type === "number" ? "0.01" : undefined}
+                  <input className="input" type="number" step="0.01"
                     value={carrForm[key] || ""} onChange={(e) => setCarrForm((f) => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
@@ -716,13 +851,15 @@ export default function ContratoDetailPage() {
         </div>
       )}
 
-      {/* Modal Transação */}
+      {/* ── Modal Transação ── */}
       {showTrxModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-semibold">{editingTrx ? "Editar" : "Nova"} Transação</h3>
-              <button onClick={() => setShowTrxModal(false)}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button onClick={() => setShowTrxModal(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <div className="p-5 grid grid-cols-2 gap-4">
               <div><label className="label">Categoria</label><input className="input" value={trxForm.categoria || ""} onChange={(e) => setTrxForm((f) => ({ ...f, categoria: e.target.value }))} /></div>

@@ -17,7 +17,7 @@ router.get("/", authMiddleware, async (req, res, next) => {
     if (q) {
       where.OR = [
         { nome: { contains: String(q), mode: "insensitive" } },
-        { placa: { contains: String(q), mode: "insensitive" } },
+        { placaCavalo: { contains: String(q), mode: "insensitive" } },
       ];
     }
 

@@ -63,6 +63,7 @@ export const contratoSchema = z.object({
   fechamentoOrigem:   z.string().optional().nullable(),
   fechamentoDestino:  z.string().optional().nullable(),
   observacoes:        z.string().optional().nullable(),
+  clausulas:          z.string().optional().nullable(),
   dataFechamento:     z.string().optional().nullable(),
   inicio:             z.string().optional().nullable(),
   termino:            z.string().optional().nullable(),
@@ -70,10 +71,11 @@ export const contratoSchema = z.object({
 });
 
 export const motoristaSchema = z.object({
-  nome:     z.string().min(1, "Nome é obrigatório"),
-  cpfCnpj:  z.string().optional().nullable(),
-  telefone: z.string().optional().nullable(),
-  placa:    z.string().optional().nullable(),
+  nome:             z.string().min(1, "Nome é obrigatório"),
+  cpfCnpj:          z.string().optional().nullable(),
+  telefone:         z.string().optional().nullable(),
+  placaCavalo:      z.string().optional().nullable(),
+  placasAdicionais: z.array(z.string()).optional().default([]),
 });
 
 export const motoristaUpdateSchema = motoristaSchema.partial();

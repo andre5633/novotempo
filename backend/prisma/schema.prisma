@@ -80,13 +80,14 @@ model Contrato {
 }
 
 model Motorista {
-  id        String   @id @default(cuid())
-  nome      String
-  cpfCnpj   String?
-  telefone  String?
-  placa     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(cuid())
+  nome             String
+  cpfCnpj          String?
+  telefone         String?
+  placaCavalo      String?
+  placasAdicionais String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Carregamento {
