@@ -35,14 +35,31 @@ export default function ContratosPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
+  const [produto, setProduto] = useState("");
+  const [comprador, setComprador] = useState("");
+  const [produtor, setProdutor] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
+
+  const hasFilters = !!(status || q || produto || comprador || produtor || dataInicio || dataFim);
+
+  function clearFilters() {
+    setStatus(""); setQ(""); setProduto(""); setComprador("");
+    setProdutor(""); setDataInicio(""); setDataFim("");
+  }
 
   async function load(p = page) {
     setLoading(true);
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (q) params.set("q", q);
+    if (produto) params.set("produto", produto);
+    if (comprador) params.set("comprador", comprador);
+    if (produtor) params.set("produtor", produtor);
+    if (dataInicio) params.set("dataInicio", dataInicio);
+    if (dataFim) params.set("dataFim", dataFim);
     params.set("page", String(p));
     params.set("limit", String(LIMIT));
     try {
@@ -56,9 +73,8 @@ export default function ContratosPage() {
     setLoading(false);
   }
 
-  useEffect(() => { setPage(1); }, [status, q]);
-  useEffect(() => { load(page); }, [status, q, page]);
-
+  useEffect(() => { setPage(1); }, [status, q, produto, comprador, produtor, dataInicio, dataFim]);
+  useEffect(() => { load(page); }, [status, q, produto, comprador, produtor, dataInicio, dataFim, page]);
 
   return (
     <DashboardLayout>
@@ -69,20 +85,68 @@ export default function ContratosPage() {
       />
 
       <div className="card">
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        {/* Linha 1: busca geral + status */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-2">
           <input
             type="text"
-            className="input sm:w-64"
-            placeholder="Buscar por ID, produto, comprador..."
+            className="input flex-1"
+            placeholder="Buscar por ID, produto, comprador, produtor..."
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <select className="input sm:w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="input sm:w-44" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Todos os status</option>
             <option value="nao_iniciado">Não Iniciado</option>
             <option value="em_andamento">Em Andamento</option>
             <option value="concluido">Concluído</option>
           </select>
+        </div>
+
+        {/* Linha 2: filtros avançados */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <input
+            type="text"
+            className="input sm:w-40"
+            placeholder="Produto"
+            value={produto}
+            onChange={(e) => setProduto(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input flex-1"
+            placeholder="Comprador"
+            value={comprador}
+            onChange={(e) => setComprador(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input flex-1"
+            placeholder="Produtor"
+            value={produtor}
+            onChange={(e) => setProdutor(e.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="input sm:w-40"
+              title="Data fechamento — de"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+            />
+            <span className="text-gray-400 text-sm">até</span>
+            <input
+              type="date"
+              className="input sm:w-40"
+              title="Data fechamento — até"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+            />
+          </div>
+          {hasFilters && (
+            <button onClick={clearFilters} className="text-sm text-gray-400 hover:text-gray-600 whitespace-nowrap">
+              Limpar filtros
+            </button>
+          )}
         </div>
 
         {loading ? (

@@ -201,7 +201,7 @@ export default function ContratoDetailPage() {
 
   async function saveEdit() {
     setSaving(true);
-    const body = { ...editForm, padraoQualidade: editQualidade };
+    const body: Record<string, unknown> = { ...editForm, padraoQualidade: editQualidade };
     if (!body.dataFechamento) delete body.dataFechamento;
     if (!body.inicio) delete body.inicio;
     if (!body.termino) delete body.termino;

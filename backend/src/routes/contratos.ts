@@ -9,16 +9,28 @@ import * as path from "path";
 
 const router = Router();
 
-// GET /api/contratos?status=&q=&page=&limit=
+// GET /api/contratos?status=&q=&produto=&comprador=&produtor=&dataInicio=&dataFim=&page=&limit=
 router.get("/", authMiddleware, async (req, res, next) => {
   try {
-    const { status, q, page, limit } = req.query;
+    const { status, q, produto, comprador, produtor, dataInicio, dataFim, page, limit } = req.query;
     const pageNum = Math.max(1, parseInt(String(page || "1")));
     const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || "20"))));
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
     if (status) where.status = String(status);
+    if (produto) where.produto = { contains: String(produto), mode: "insensitive" };
+    if (comprador) where.comprador = { nome: { contains: String(comprador), mode: "insensitive" } };
+    if (produtor) where.produtor = { nome: { contains: String(produtor), mode: "insensitive" } };
+    if (dataInicio || dataFim) {
+      where.dataFechamento = {};
+      if (dataInicio) where.dataFechamento.gte = new Date(String(dataInicio));
+      if (dataFim) {
+        const fim = new Date(String(dataFim));
+        fim.setHours(23, 59, 59, 999);
+        where.dataFechamento.lte = fim;
+      }
+    }
     if (q) {
       where.OR = [
         { numeroId: { contains: String(q), mode: "insensitive" } },
